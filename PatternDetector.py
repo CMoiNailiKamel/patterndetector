@@ -9,12 +9,96 @@ from sklearn import decomposition
 import matplotlib.pyplot as plt
 import pickle
 import string
+import re
+import code
 from urlextract import URLExtract
 import sys
 import subprocess
 import os
+from pprint import pprint
 from nltk.tokenize import word_tokenize
 from nltk.corpus import stopwords
+
+
+def getPhone(inputString, infoDict, debug=False):
+    '''
+    Given an input string, returns possible matches for phone numbers. Uses regular expression based matching.
+    Needs an input string, a dictionary where values are being stored, and an optional parameter for debugging.
+    Modules required: clock from time, code.
+    '''
+
+    number = None
+    try:
+        pattern = re.compile(
+            r'([+(]?\d+[)\-]?[ \t\r\f\v]*[(]?\d{2,}[()\-]?[ \t\r\f\v]*\d{2,}[()\-]?[ \t\r\f\v]*\d*[ \t\r\f\v]*\d*[ \t\r\f\v]*)')
+        # Understanding the above regex
+        # +91 or (91) -> [+(]? \d+ -?
+        # Metacharacters have to be escaped with \ outside of character classes; inside only hyphen has to be escaped
+        # hyphen has to be escaped inside the character class if you're not incidication a range
+        # General number formats are 123 456 7890 or 12345 67890 or 1234567890 or 123-456-7890, hence 3 or more digits
+        # Amendment to above - some also have (0000) 00 00 00 kind of format
+        # \s* is any whitespace character - careful, use [ \t\r\f\v]* instead since newlines are trouble
+        match = pattern.findall(inputString)
+        # match = [re.sub(r'\s', '', el) for el in match]
+        # Get rid of random whitespaces - helps with getting rid of 6 digits or fewer (e.g. pin codes) strings
+        # substitute the characters we don't want just for the purpose of checking
+        match = [re.sub(r'[,.]', '', el) for el in match if len(re.sub(r'[()\-.,\s+]', '', el)) > 6]
+        # Taking care of years, eg. 2001-2004 etc.
+        match = [re.sub(r'\D$', '', el).strip() for el in match]
+        # $ matches end of string. This takes care of random trailing non-digit characters. \D is non-digit characters
+        match = [el for el in match if len(re.sub(r'\D', '', el)) <= 15]
+        # Remove number strings that are greater than 15 digits
+        try:
+            for el in list(match):
+                # Create a copy of the list since you're iterating over it
+                if len(el.split('-')) > 3: continue  # Year format YYYY-MM-DD
+                for x in el.split("-"):
+                    try:
+                        # Error catching is necessary because of possibility of stray non-number characters
+                        # if int(re.sub(r'\D', '', x.strip())) in range(1900, 2100):
+                        if x.strip()[-4:].isdigit():
+                            if int(x.strip()[-4:]) in range(1900, 2100):
+                                # Don't combine the two if statements to avoid a type conversion error
+                                match.remove(el)
+                    except:
+                        pass
+        except:
+            pass
+        number = match
+    except:
+        pass
+
+    infoDict['phone'] = number
+
+    if debug:
+        print
+        "\n", pprint(infoDict), "\n"
+        #code.interact(local=locals())
+    return number
+
+def getEmail(inputString, infoDict, debug=False):
+        '''
+        Given an input string, returns possible matches for emails. Uses regular expression based matching.
+        Needs an input string, a dictionary where values are being stored, and an optional parameter for debugging.
+        Modules required: clock from time, code.
+        '''
+
+        email = None
+        try:
+            pattern = re.compile(r'\S*@\S*')
+            matches = pattern.findall(inputString)  # Gets all email addresses as a list
+            email = matches
+        except Exception as e:
+            print
+            e
+
+        infoDict['email'] = email
+
+        if debug:
+            print
+            "\n", pprint(infoDict), "\n"
+            #code.interact(local=locals())
+        return email
 
 
 def read_All_CV(filename):
@@ -39,40 +123,29 @@ stop_words = stopwords.words('english')
 
 #storing the cleaned resume
 filtered = [w for w in tokens if not w in stop_words and  not w in string.punctuation]
-print ("removing the stop words....\nCleaning the resumes....\nExtracting Text .......")
-print (filtered)
+print("removing the stop words....\nCleaning the resumes....\nExtracting Text .......")
+print(filtered)
+
+print("removing the stop words....\nCleaning the resumes....\nExtracting Text .......")
+print(filtered)
 #get the name from the resume
-name  = str(filtered[0])+' ' +str(filtered[1])
-print ("Name : " + name)
+name = str(filtered[0]) + ' ' + str(filtered[1])
+print("Name : " + name)
+print("removing the stop words....\nCleaning the resumes....\nExtracting Text .......")
+print(filtered)
 
-#using regular expressions we extract phone numbers and mail ids
-import re
-#get contact info - from resume
-#email
 email = ""
-match_mail = re.search(r'[\w\.-]+@[\w\.-]+', resume)
-#match_mail =re.search(r'(?:[a-z0-9!#$%&'*+/=?^_`{|}~-]+(?:\.[a-z0-9!#$%&'*+/=?^_`{|}~-]+)*|"(?:[\x01-\x08\x0b\x0c\x0e-\x1f\x21\x23-\x5b\x5d-\x7f]|\\[\x01-\x09\x0b\x0c\x0e-\x7f])*")@(?:(?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.)+[a-z0-9](?:[a-z0-9-]*[a-z0-9])?|\[(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?|[a-z0-9-]*[a-z0-9]:(?:[\x01-\x08\x0b\x0c\x0e-\x1f\x21-\x5a\x53-\x7f]|\\[\x01-\x09\x0b\x0c\x0e-\x7f])+)\])')
-#handling the cases when mobile number is not given
-if(match_mail != None):
-    email = match_mail.group(0)
-print ("Email : " + email)
-
-
 website = ""
-match_website = re.search(r'[\w\.-]+@[\w\.-]+', resume)
-
-if(match_website != None):
-    website = match_website.group(0)
-print ("Website : " + website)
-
-#mobile number
 mobile = ""
-match_mobile = re.search(r'((?:(?:\+?([1-9]|[0-9][0-9]|[0-9][0-9][0-9])\s*(?:[.-]\s*)?)?(?:\(\s*([2-9]1[02-9]|[2-9][02-8]1|[2-9][02-8][02-9])\s*\)|([0-9][1-9]|[0-9]1[02-9]|[2-9][02-8]1|[2-9][02-8][02-9]))\s*(?:[.-]\s*)?)?([2-9]1[02-9]|[2-9][02-9]1|[2-9][02-9]{2})\s*(?:[.-]\s*)?([0-9]{4})(?:\s*(?:#|x\.?|ext\.?|extension)\s*(\d+))?)',resume)
-#handling the cases when mobile number is not given
-if(match_mobile != None):
-    mobile = match_mobile.group(0)
+info = {}
 
-print("Mobile : " +  mobile)
+email = getEmail(resume, info, False)
+mobile = getPhone(resume, info, False)
+
+print("Name : ", name)
+print("Mobile : ", mobile)
+print("Email : ", email)
+
 
 
 

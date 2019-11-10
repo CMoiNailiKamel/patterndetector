@@ -1,159 +1,123 @@
-from gensim.models import Word2Vec, KeyedVectors
-#from pattern3 import es
-import textract
-from os import listdir
-from os.path import isfile, join
-import numpy as np
-from scipy import spatial
-from sklearn import decomposition
-import matplotlib.pyplot as plt
-import pickle
-import string
-import re
-import code
-from urlextract import URLExtract
-import sys
-import subprocess
+# Author: Naili Kamel
+
 import os
-from pprint import pprint
-from nltk.tokenize import word_tokenize
-from nltk.corpus import stopwords
+import multiprocessing as mp
+import io
+import spacy
+import pprint
+from spacy.matcher import Matcher
+#from . import utils
+import utils
 
+class ResumeParser(object):
+    def __init__(self, resume, skills_file=None):
+        nlp = spacy.load('en_core_web_sm')
+        custom_nlp = spacy.load(os.path.dirname(os.path.abspath(__file__)))
+        self.__skills_file = skills_file
+        self.__matcher = Matcher(nlp.vocab)
+        self.__details = {
+            'name'              : None,
+            'email'             : None,
+            'mobile_number'     : None,
+            'skills'            : None,
+            'college_name'      : None,
+            'degree'            : None,
+            'designation'       : None,
+            'experience'        : None,
+            'company_names'     : None,
+            'no_of_pages'       : None,
+            'total_experience'  : None,
+        }
+        self.__resume      = resume
+        if not isinstance(self.__resume, io.BytesIO):
+            ext = os.path.splitext(self.__resume)[1].split('.')[1]
+        else:
+            ext = self.__resume.name.split('.')[1]
+        self.__text_raw    = utils.extract_text(self.__resume, '.' + ext)
+        self.__text        = ' '.join(self.__text_raw.split())
+        self.__nlp         = nlp(self.__text)
+        self.__custom_nlp  = custom_nlp(self.__text_raw)
+        self.__noun_chunks = list(self.__nlp.noun_chunks)
+        self.__get_basic_details()
 
-def getPhone(inputString, infoDict, debug=False):
-    '''
-    Given an input string, returns possible matches for phone numbers. Uses regular expression based matching.
-    Needs an input string, a dictionary where values are being stored, and an optional parameter for debugging.
-    Modules required: clock from time, code.
-    '''
+    def get_extracted_data(self):
+        return self.__details
 
-    number = None
-    try:
-        pattern = re.compile(
-            r'([+(]?\d+[)\-]?[ \t\r\f\v]*[(]?\d{2,}[()\-]?[ \t\r\f\v]*\d{2,}[()\-]?[ \t\r\f\v]*\d*[ \t\r\f\v]*\d*[ \t\r\f\v]*)')
-        # Understanding the above regex
-        # +91 or (91) -> [+(]? \d+ -?
-        # Metacharacters have to be escaped with \ outside of character classes; inside only hyphen has to be escaped
-        # hyphen has to be escaped inside the character class if you're not incidication a range
-        # General number formats are 123 456 7890 or 12345 67890 or 1234567890 or 123-456-7890, hence 3 or more digits
-        # Amendment to above - some also have (0000) 00 00 00 kind of format
-        # \s* is any whitespace character - careful, use [ \t\r\f\v]* instead since newlines are trouble
-        match = pattern.findall(inputString)
-        # match = [re.sub(r'\s', '', el) for el in match]
-        # Get rid of random whitespaces - helps with getting rid of 6 digits or fewer (e.g. pin codes) strings
-        # substitute the characters we don't want just for the purpose of checking
-        match = [re.sub(r'[,.]', '', el) for el in match if len(re.sub(r'[()\-.,\s+]', '', el)) > 6]
-        # Taking care of years, eg. 2001-2004 etc.
-        match = [re.sub(r'\D$', '', el).strip() for el in match]
-        # $ matches end of string. This takes care of random trailing non-digit characters. \D is non-digit characters
-        match = [el for el in match if len(re.sub(r'\D', '', el)) <= 15]
-        # Remove number strings that are greater than 15 digits
+    def __get_basic_details(self):
+        custom_entities = utils.extract_entities_wih_custom_model(self.__custom_nlp)
+        name            = utils.extract_name(self.__nlp, matcher=self.__matcher)
+        email           = utils.extract_email(self.__text)
+        mobile          = utils.extract_mobile_number(self.__text)
+        skills          = utils.extract_skills(self.__nlp, self.__noun_chunks, self.__skills_file)
+        edu             = utils.extract_education([sent.string.strip() for sent in self.__nlp.sents])
+        entities        = utils.extract_entity_sections_grad(self.__text_raw)
+
+        # extract name
         try:
-            for el in list(match):
-                # Create a copy of the list since you're iterating over it
-                if len(el.split('-')) > 3: continue  # Year format YYYY-MM-DD
-                for x in el.split("-"):
-                    try:
-                        # Error catching is necessary because of possibility of stray non-number characters
-                        # if int(re.sub(r'\D', '', x.strip())) in range(1900, 2100):
-                        if x.strip()[-4:].isdigit():
-                            if int(x.strip()[-4:]) in range(1900, 2100):
-                                # Don't combine the two if statements to avoid a type conversion error
-                                match.remove(el)
-                    except:
-                        pass
-        except:
+            self.__details['name'] = custom_entities['Name'][0]
+        except (IndexError, KeyError):
+            self.__details['name'] = name
+
+        #extract email
+        self.__details['email'] = email
+
+        # extract mobile number
+        self.__details['mobile_number'] = mobile
+
+        # extract skills
+        self.__details['skills'] = skills
+
+        # extract college name
+        try:
+            self.__details['college_name'] = entities['College Name']
+        except KeyError:
             pass
-        number = match
-    except:
-        pass
 
-    infoDict['phone'] = number
-
-    if debug:
-        print
-        "\n", pprint(infoDict), "\n"
-        #code.interact(local=locals())
-    return number
-
-def getEmail(inputString, infoDict, debug=False):
-        '''
-        Given an input string, returns possible matches for emails. Uses regular expression based matching.
-        Needs an input string, a dictionary where values are being stored, and an optional parameter for debugging.
-        Modules required: clock from time, code.
-        '''
-
-        email = None
+        # extract education Degree
         try:
-            pattern = re.compile(r'\S*@\S*')
-            matches = pattern.findall(inputString)  # Gets all email addresses as a list
-            email = matches
-        except Exception as e:
-            print
-            e
+            self.__details['degree'] = custom_entities['Degree']
+        except KeyError:
+            pass
 
-        infoDict['email'] = email
+        # extract designation
+        try:
+            self.__details['designation'] = custom_entities['Designation']
+        except KeyError:
+            pass
 
-        if debug:
-            print
-            "\n", pprint(infoDict), "\n"
-            #code.interact(local=locals())
-        return email
+        # extract company names
+        try:
+            self.__details['company_names'] = custom_entities['Companies worked at']
+        except KeyError:
+            pass
 
+        try:
+            self.__details['experience'] = entities['experience']
+            try:
+                self.__details['total_experience'] = round(utils.get_total_experience(entities['experience']) / 12, 2)
+            except KeyError:
+                self.__details['total_experience'] = 0
+        except KeyError:
+            self.__details['total_experience'] = 0
+        self.__details['no_of_pages'] = utils.get_number_of_pages(self.__resume)
+        return
 
-def read_All_CV(filename):
-    text = textract.process(filename)
-    return text.decode('utf-8')
+def resume_result_wrapper(resume):
+        parser = ResumeParser(resume)
+        return parser.get_extracted_data()
 
-alltext = ' '
-yd = read_All_CV("/tmp/cv.pdf")
-alltext += yd + " "
-alltext = alltext.lower()
+if __name__ == '__main__':
+    pool = mp.Pool(mp.cpu_count())
 
-print(alltext)
+    resumes = []
+    data = []
+    for root, directories, filenames in os.walk('/tmp/resumes'):
+        for filename in filenames:
+            file = os.path.join(root, filename)
+            resumes.append(file)
 
-print ("processing..... \nplease wait....")
+    results = [pool.apply_async(resume_result_wrapper, args=(x,)) for x in resumes]
 
-resume = alltext
-#Tokenizing/ Filtering the resume off stopwords and punctuations
-print ("tokenizing the given file ......")
-tokens = word_tokenize(resume)
-punctuations = ['(',')',';',':','[',']',',']
-stop_words = stopwords.words('english')
+    results = [p.get() for p in results]
 
-#storing the cleaned resume
-filtered = [w for w in tokens if not w in stop_words and  not w in string.punctuation]
-print("removing the stop words....\nCleaning the resumes....\nExtracting Text .......")
-print(filtered)
-
-print("removing the stop words....\nCleaning the resumes....\nExtracting Text .......")
-print(filtered)
-#get the name from the resume
-name = str(filtered[0]) + ' ' + str(filtered[1])
-print("Name : " + name)
-print("removing the stop words....\nCleaning the resumes....\nExtracting Text .......")
-print(filtered)
-
-email = ""
-website = ""
-mobile = ""
-info = {}
-
-email = getEmail(resume, info, False)
-mobile = getPhone(resume, info, False)
-
-print("Name : ", name)
-print("Mobile : ", mobile)
-print("Email : ", email)
-
-
-
-
-
-
-
-
-
-
-
-
+    pprint.pprint(results)

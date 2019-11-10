@@ -304,13 +304,13 @@ def extract_name(nlp_text, matcher):
     pattern = [cs.NAME_PATTERN]
     
     matcher.add('NAME', None, *pattern)
-    
+
     matches = matcher(nlp_text)
-    
-    for _, start, end in matches:
+
+    for match_id, start, end in matches:
         span = nlp_text[start:end]
-        if 'name' not in span.text.lower():
-            return span.text
+        return span.text
+
 
 def extract_mobile_number(inputString):
     '''

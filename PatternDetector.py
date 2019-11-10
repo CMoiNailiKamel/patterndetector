@@ -9,10 +9,12 @@ from spacy.matcher import Matcher
 #from . import utils
 import utils
 
+#nlp = spacy.load('en_core_web_sm')
+nlp = spacy.load('fr_core_news_sm')
+
+custom_nlp = spacy.load(os.path.dirname(os.path.abspath(__file__)))
 class ResumeParser(object):
     def __init__(self, resume, skills_file=None):
-        nlp = spacy.load('en_core_web_sm')
-        custom_nlp = spacy.load(os.path.dirname(os.path.abspath(__file__)))
         self.__skills_file = skills_file
         self.__matcher = Matcher(nlp.vocab)
         self.__details = {
@@ -51,6 +53,8 @@ class ResumeParser(object):
         skills          = utils.extract_skills(self.__nlp, self.__noun_chunks, self.__skills_file)
         edu             = utils.extract_education([sent.string.strip() for sent in self.__nlp.sents])
         entities        = utils.extract_entity_sections_grad(self.__text_raw)
+
+        print(name)
 
         # extract name
         try:
@@ -111,7 +115,7 @@ if __name__ == '__main__':
 
     resumes = []
     data = []
-    for root, directories, filenames in os.walk('/tmp/resumes'):
+    for root, directories, filenames in os.walk('resumes'):
         for filename in filenames:
             file = os.path.join(root, filename)
             resumes.append(file)

@@ -81,7 +81,7 @@ tqdm==4.32.2
 tzlocal==1.5.1
 uritools==2.2.0
 urlextract==0.14.0
-urllib3==1.25.3
+urllib3==1.25.8
 urlparse3==1.1
 urlparser==0.1.2
 wasabi==0.2.2
